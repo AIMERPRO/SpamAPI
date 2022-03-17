@@ -15,11 +15,11 @@ Including another URLconf
 """
 
 from django.contrib import admin
-from django.urls import path, include, re_path
-from .yasg import urlpatterns as doc_urls
+from django.urls import path, include
+from rest_framework import routers
 
 from spam.views import *
-from rest_framework import routers
+from .yasg import urlpatterns as doc_urls
 
 router = routers.DefaultRouter()
 router.register(r'client', ClientViewSet)
