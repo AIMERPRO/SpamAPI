@@ -50,60 +50,61 @@ class Message(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата и время создания сообщения')
 
 
+# Функция отправки запроса по API (выполняется в отдельном Thread)
 def spam_to_users(spam_info):
-    tag_or_code = spam_info.filter.split(', ')
+    tag_or_code = spam_info.filter.split(', ')  # Получаем тэг и код моб оператора
     clients = Client.objects.filter(Q(code=tag_or_code[0])
-                                    and Q(tag=tag_or_code[1]))
+                                    and Q(tag=tag_or_code[1]))  # получаем клиентов по тэгу и коду
 
     for client in clients:
-        Message(status="Ожидает отправки", spam_id=spam_info.id, client_id=client.id).save()
+        Message(status="Ожидает отправки", spam_id=spam_info.id, client_id=client.id).save()  # Предварительно создаём в БД сообщения с статусом ожидания отправки
 
-    current_date = datetime.datetime.now()
+    current_date = datetime.datetime.now()  # получаем текущее время
 
-    while (spam_info.ended_at.replace(tzinfo=None) - current_date) > datetime.timedelta(seconds=1):
+    while (spam_info.ended_at.replace(tzinfo=None) - current_date) > datetime.timedelta(seconds=1):  # Проверка, что время на выполнение рассылки ещё не закончилось
 
-        if (spam_info.started_at.replace(tzinfo=None) - current_date) <= datetime.timedelta(seconds=1):
-            messages = Message.objects.filter(Q(status="Ожидает отправки") or Q(status="Ошибка отправки"))
+        if (spam_info.started_at.replace(tzinfo=None) - current_date) <= datetime.timedelta(seconds=1):  # Проверка, что время на выполнение рассылки началось
+            messages = Message.objects.filter(Q(status="Ожидает отправки") or Q(status="Ошибка отправки"))  # Выбираем все сообщения с статусом ожидания и ошибки
 
-            if messages:
+            if messages:  # Если находим сообщения
                 for message in messages:
                     message_text = spam_info.content
                     client_instance = Client.objects.get(id=message.client_id)
                     message_phone = client_instance.phone_number
 
-                    url = f'https://probe.fbrq.cloud/v1/send/{message.id}'
+                    url = f'https://probe.fbrq.cloud/v1/send/{message.id}'  # url API на который будет отправлен запрос
 
                     headers = {
                         'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2Nzg5NTMwNTQsImlzcyI6ImZhYnJpcXVlIiwibmFtZSI6IkxJR1VTS0tBRGV2In0.2xAEkv5uEBHaMkTcdY2ALg0R_vCjK7Crynhglk1naE8',
-                    }
-
+                    }  # передаём JWT токен
                     body = {
                         'id': int(message.id),
                         'phone': int(message_phone),
                         'text': message_text,
                     }
-                    json_body = json.dumps(body)
+                    json_body = json.dumps(body)  # преобразуем словарь body в json формат
 
-                    print("Выполняем запрос")
+                    res = requests.post(url, headers=headers, data=json_body, timeout=5)  # отправляем запрос на API стороннего сервиса с ограничением по времени 5 секунд
 
-                    res = requests.post(url, headers=headers, data=json_body, timeout=5)
-
-                    if res.status_code == 200:
-                        message.status = "Отправлено"
-                        message.save()
-                    else:
+                    try:  # Проверяем на исключения
+                        if res.status_code == 200:  # Всё ок, сообщение отправлено, сохраняем статус для сообщения
+                            message.status = "Отправлено"
+                            message.save()
+                        else:  # Что-то пошло не так, сообщение не отправлено, сохраняем статус для сообщения
+                            message.status = "Ошибка отправки"
+                            message.save()
+                    except:  # Что-то пошло не так, сообщение не отправлено, сохраняем статус для сообщения
                         message.status = "Ошибка отправки"
                         message.save()
 
-                    current_date = datetime.datetime.now()
+                    current_date = datetime.datetime.now()  # Обновляем текущее время
 
             else:
                 break
 
         else:
-            print("Ждём нужного времени")
-            time.sleep(10)
-            current_date = datetime.datetime.now()
+            time.sleep(10)  # Ждём 10 секунд до выполнения следующей итерации цикла
+            current_date = datetime.datetime.now()  # Обновляем текущее время
 
 
 @receiver(post_save, sender=Spam)

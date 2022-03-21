@@ -29,6 +29,7 @@ router.register(r'message', MessageViewSet)
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/v1/', include(router.urls)),
+    path('api/v1/spamstatus', SpamStatViewSet.as_view({'get': 'list'})),
 ]
 
 urlpatterns += doc_urls
